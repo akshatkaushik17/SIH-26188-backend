@@ -1,0 +1,10 @@
+venv/
+venv_face/
+__pycache__/
+*.pyc
+.env
+processed_sample.png
+
+*.jpg
+*.jpeg
+*.png
