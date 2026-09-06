@@ -16,104 +16,349 @@ def clean_text(value):
         return None
 
     return " ".join(value.strip().split())
+# ==========================================================
+# DATE NORMALIZATION
+# ==========================================================
 
+def normalize_date(value):
+    """
+    Normalize OCR/French month names into English month names.
+    """
+
+    if not value:
+        return None
+
+    value = clean_text(value).upper()
+
+    replacements = {
+
+        # January
+        "JANVIER": "JANUARY",
+
+        # February
+        "FEVRIER": "FEBRUARY",
+        "FÉVRIER": "FEBRUARY",
+
+        # March
+        "MARS": "MARCH",
+
+        # April
+        "AVRIL": "APRIL",
+
+        # May
+        "MAI": "MAY",
+        "KAI": "MAY",
+
+        # June
+        "JUIN": "JUNE",
+
+        # July
+        "JUILLET": "JULY",
+
+        # August
+        "AOUT": "AUGUST",
+        "AOÛT": "AUGUST",
+
+        # September
+        "SEPTEMBRE": "SEPTEMBER",
+
+        # October
+        "OCTOBRE": "OCTOBER",
+
+        # November
+        "NOVEMBRE": "NOVEMBER",
+
+        # December + OCR errors
+        "DECEMBRE": "DECEMBER",
+        "DÉCEMBRE": "DECEMBER",
+        "DECENBRE": "DECEMBER",
+        "DECENIBRE": "DECEMBER",
+        "DECELBRE": "DECEMBER",
+        "DECEYPRE": "DECEMBER"
+    }
+
+    for wrong, correct in replacements.items():
+
+        value = value.replace(
+            wrong,
+            correct
+        )
+
+
+    # Add missing spaces between day, month and year
+    value = re.sub(
+        r"^([0-9]{1,2})([A-Z]+)([0-9]{4})$",
+        r"\1 \2 \3",
+        value
+    )
+
+    return value
 
 # ==========================================================
 # DATE EXTRACTION
 # ==========================================================
-
 def find_date(text, labels):
     """
-    Find a date after one of the supplied labels.
+    Extract passport dates from OCR text.
 
-    Supports:
-    12/04/2002
-    12-04-2002
-    12.04.2002
-
-    Also supports:
-    17 OCT 1988
-    23 Dec 2027
+    Handles:
+    - 12/04/2002
+    - 12-04-2002
+    - 12.04.2002
+    - 17 OCT 1988
+    - 23 Dec 2027
+    - 17DECELBRE1992
+    - 16 DECENIBRE 1997
+    - OCR punctuation/noise in dates
     """
+
+    # ------------------------------------------------------
+    # Normalize OCR spacing
+    # ------------------------------------------------------
+
+    text = re.sub(r"[ \t]+", " ", text)
+
+    # ------------------------------------------------------
+    # Month pattern
+    # ------------------------------------------------------
+
+    month_pattern = (
+        r"(?:"
+        r"JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|"
+        r"MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|"
+        r"SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|"
+        r"DEC(?:EMBER)?|"
+        r"JANVIER|F[ÉE]VRIER|MARS|AVRIL|MAI|JUIN|"
+        r"JUILLET|AO[ÛU]T|SEPTEMBRE|OCTOBRE|"
+        r"NOVEMBRE|D[ÉE]CEMBRE|"
+        r"DECELBRE|DECENBRE|DECEMBRE|DECEYPRE|"
+        r"DECENIBRE"
+        r")"
+    )
+
+    # ------------------------------------------------------
+    # 1. Explicitly labelled numeric date
+    # ------------------------------------------------------
 
     label_pattern = "|".join(
         re.escape(label)
         for label in labels
     )
 
-    # ------------------------------------------------------
-    # FORMAT 1: Numeric dates
-    # Example:
-    # Date of Birth: 12/04/2002
-    # ------------------------------------------------------
-
-    numeric_pattern = (
+    match = re.search(
         rf"(?:{label_pattern})"
         rf"\s*[:\-]?\s*"
-        rf"([0-9]{{1,2}}[-/.][0-9]{{1,2}}[-/.][0-9]{{4}})"
-    )
-
-    match = re.search(
-        numeric_pattern,
+        rf"([0-9]{{1,2}}[-/.][0-9]{{1,2}}[-/.][0-9]{{4}})",
         text,
         re.IGNORECASE
     )
 
     if match:
-
         return match.group(1).strip()
 
+    # ------------------------------------------------------
+    # 2. Explicitly labelled text date
+    # ------------------------------------------------------
+
+    match = re.search(
+        rf"(?:{label_pattern})"
+        rf"\s*[:\-]?\s*"
+        rf"([0-9]{{1,2}}\s*{month_pattern}"
+        rf"\s*[0-9]{{4}})",
+        text,
+        re.IGNORECASE
+    )
+
+    if match:
+        return re.sub(
+            r"\s+",
+            " ",
+            match.group(1).strip()
+        )
 
     # ------------------------------------------------------
-    # FORMAT 2: Text month
+    # 3. Find all normal OCR date candidates
+    # ------------------------------------------------------
+
+    candidates = []
+
+    # Example:
+    # 6 MAI 1962
+    # 16 DECENIBRE 1997
+    normal_pattern = (
+        rf"\b"
+        rf"([0-9]{{1,2}}\s*"
+        rf"{month_pattern}"
+        rf"\s*[0-9]{{4}})"
+        rf"\b"
+    )
+
+    for match in re.finditer(
+        normal_pattern,
+        text,
+        re.IGNORECASE
+    ):
+        value = re.sub(
+            r"\s+",
+            " ",
+            match.group(1).strip()
+        )
+
+        if value not in candidates:
+            candidates.append(value)
+
+    # ------------------------------------------------------
+    # 4. OCR date without spaces
     #
     # Example:
-    # 17 OCT 1988
-    # 23 Dec 2027
+    # 17DECELBRE1992
     # ------------------------------------------------------
 
-    month_pattern = (
-        r"(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)"
+    compact_pattern = (
+        rf"\b"
+        rf"([0-9]{{1,2}}{month_pattern}[0-9]{{4}})"
+        rf"\b"
     )
 
-    text_date_pattern = (
-        rf"(?:{label_pattern})"
-        rf"\s*[:\-]?\s*"
-        rf"([0-9]{{1,2}}\s+"
-        rf"{month_pattern}"
-        rf"\s+[0-9]{{4}})"
-    )
-
-    match = re.search(
-        text_date_pattern,
+    for match in re.finditer(
+        compact_pattern,
         text,
         re.IGNORECASE
+    ):
+        value = match.group(1).strip()
+
+        if value not in candidates:
+            candidates.append(value)
+
+    # ------------------------------------------------------
+    # 5. OCR date with punctuation/noise
+    #
+    # Example:
+    # 17 DECEYPRE;.4992
+    #
+    # The OCR may insert punctuation between the
+    # month and year.
+    # ------------------------------------------------------
+
+    noisy_pattern = (
+        rf"\b"
+        rf"([0-9]{{1,2}}\s*"
+        rf"{month_pattern}"
+        rf"[^0-9A-Za-z]{{0,8}}"
+        rf"[14][0-9]{{3}})"
+        rf"\b"
+    )
+
+    for match in re.finditer(
+        noisy_pattern,
+        text,
+        re.IGNORECASE
+    ):
+        value = match.group(1).strip()
+
+        # Normalize punctuation between month/year
+        value = re.sub(
+            rf"({month_pattern})[^0-9A-Za-z]+([14][0-9]{{3}})",
+            r"\1 \2",
+            value,
+            flags=re.IGNORECASE
+        )
+
+        # OCR commonly reads 1992 as 4992.
+        value = re.sub(
+            r"\b4(9\d{2})\b",
+            r"1\1",
+            value
+        )
+
+        value = re.sub(
+            r"\s+",
+            " ",
+            value
+        ).strip()
+
+        if value not in candidates:
+            candidates.append(value)
+
+    # ------------------------------------------------------
+    # 6. Split date across OCR lines
+    #
+    # Example:
+    # 16 DECENIBRE
+    # 1997
+    # ------------------------------------------------------
+
+    split_pattern = (
+        rf"\b([0-9]{{1,2}}\s*{month_pattern})"
+        rf"\s*\n\s*"
+        rf"([0-9]{{4}})\b"
+    )
+
+    for match in re.finditer(
+        split_pattern,
+        text,
+        re.IGNORECASE
+    ):
+        value = f"{match.group(1)} {match.group(2)}"
+
+        value = re.sub(
+            r"\s+",
+            " ",
+            value
+        ).strip()
+
+        if value not in candidates:
+            candidates.append(value)
+
+    # ------------------------------------------------------
+    # 7. Assign based on passport field requested
+    # ------------------------------------------------------
+
+    if candidates:
+
+        label_text = " ".join(labels).lower()
+
+        if "birth" in label_text or "dob" in label_text:
+            return candidates[0]
+
+        if "issue" in label_text or "issued" in label_text:
+            if len(candidates) >= 2:
+                return candidates[1]
+            return candidates[-1]
+
+        if (
+            "expiry" in label_text
+            or "expiration" in label_text
+            or "expires" in label_text
+        ):
+            if len(candidates) >= 3:
+                return candidates[2]
+            return candidates[-1]
+
+        return candidates[0]
+
+    # ------------------------------------------------------
+    # 8. Numeric date fallback
+    # ------------------------------------------------------
+
+    match = re.search(
+        r"\b[0-9]{1,2}[-/.][0-9]{1,2}[-/.][0-9]{4}\b",
+        text
     )
 
     if match:
-
-        return match.group(1).strip()
-
+        return match.group(0).strip()
 
     return None
-# ==========================================================
-# PASSPORT NUMBER EXTRACTION
-# ==========================================================
 
 def find_passport_number(text):
     """
     Find passport/document number from OCR text.
-
-    Examples:
-    Passport Number: P1234567
-    Passport No: P1234567
-    Document Number: P1234567
-    Document No: P1234567
     """
 
     patterns = [
 
-        r"(?:Passport\s*Number|Passport\s*No\.?)"
+        r"(?:Passport\s*Number|Passport\s*No\.?|No\.?\s*Passeport)"
         r"\s*[:\-]?\s*([A-Z0-9]{6,12})",
 
         r"(?:Document\s*Number|Document\s*No\.?)"
@@ -129,8 +374,17 @@ def find_passport_number(text):
         )
 
         if match:
-
             return match.group(1).strip().upper()
+
+    # Fallback:
+    # Look for a standalone passport-like numeric identifier.
+    candidates = re.findall(
+        r"\b\d{8,12}\b",
+        text
+    )
+
+    if candidates:
+        return candidates[0]
 
     return None
 
@@ -140,46 +394,34 @@ def find_passport_number(text):
 
 def find_name(text):
     """
-    Find the person's name from normal OCR text.
-
-    Examples:
-
-    Name: Rahul Kumar
-    Full Name: Rahul Kumar
-    Given Names: Rahul Kumar
-
-    Also handles passport-style OCR where
-    labels such as "Prenoms" may appear.
+    Find person's name from normal OCR or passport-style OCR.
     """
 
+    # ------------------------------------------------------
+    # 1. Normal labelled name
+    # ------------------------------------------------------
+
     patterns = [
-
-        # ----------------------------------------------
-        # Normal format
-        # Name: Rahul Kumar
-        # ----------------------------------------------
-
-        r"(?:Full\s+Name|Name)"
-        r"\s*[:\-]\s*"
-        r"([A-Za-z][A-Za-z .'-]{1,50})",
-
-
-        # ----------------------------------------------
-        # Given Names: CALLIE
-        # Given Names
-        # Prenoms
-        # CALLIE
-        #
-        # This allows the value to appear on the
-        # following line.
-        # ----------------------------------------------
-
+        r"(?:Full\s+Name|Name)\s*[:\-]\s*([A-Za-z][A-Za-z .'-]{1,50})",
         r"(?:Given\s+Names|Given\s+Name|Forenames|Prenoms)"
-        r"\s*[:\-]?\s*"
-        r"(?:\n|\s)+"
+        r"\s*[:\-]?\s*(?:\n|\s)+"
         r"([A-Za-z][A-Za-z .'-]{1,50})"
     ]
 
+    invalid_names = {
+        "name",
+        "full name",
+        "given name",
+        "given names",
+        "forenames",
+        "prenoms",
+        "nationality",
+        "sex",
+        "passport",
+        "passport number",
+        "document",
+        "document number"
+    }
 
     for pattern in patterns:
 
@@ -195,34 +437,65 @@ def find_name(text):
                 match.group(1)
             )
 
-            name = name.split("\n")[0].strip()
+            if name.lower() not in invalid_names:
+                return name
 
-            # ------------------------------------------
-            # Don't return a field label as a name
-            # ------------------------------------------
+    # ------------------------------------------------------
+    # 2. Passport-style OCR fallback
+    #
+    # Look for uppercase name words after the
+    # passport/document number and before nationality.
+    # ------------------------------------------------------
 
-            invalid_names = {
-                "name",
-                "full name",
-                "given name",
-                "given names",
-                "forenames",
-                "prenoms",
-                "surname",
-                "nationality",
-                "sex",
-                "passport",
-                "passport number"
-            }
+    passport_match = re.search(
+        r"\b\d{7,10}\b",
+        text
+    )
 
-            if name.lower() in invalid_names:
-                continue
+    nationality_match = re.search(
+        r"\b(?:HAITIENNE|HAITIEN|INDIAN|INDIEN|"
+        r"FRENCH|FRANCAIS|AMERICAN|CANADIAN|BRITISH)\b",
+        text,
+        re.IGNORECASE
+    )
 
-            return name
+    if passport_match:
 
+        start = passport_match.end()
+
+        if nationality_match and nationality_match.start() > start:
+            section = text[start:nationality_match.start()]
+        else:
+            section = text[start:start + 200]
+
+        # Find uppercase alphabetic words.
+        words = re.findall(
+            r"\b[A-ZÀ-ÖØ-Ý]{3,}\b",
+            section
+        )
+
+        excluded = {
+            "NO",
+            "N0",
+            "NOM",
+            "NAME",
+            "SEX",
+            "SEXE",
+            "DATE",
+            "PORT",
+            "PORT-AU-PRINCE",
+            "PASSPORT"
+        }
+
+        words = [
+            word for word in words
+            if word.upper() not in excluded
+        ]
+
+        if words:
+            return " ".join(words[:3])
 
     return None
-
 
 # ==========================================================
 # NATIONALITY
@@ -322,8 +595,35 @@ def find_nationality(text):
 
 
     # --------------------------------------------------
-    # 3. Nothing reliable found in normal OCR
+    # 3. Common nationality words without a clear label
     # --------------------------------------------------
+
+    nationality_map = {
+
+        "HAITIEN": "HAITIAN",
+        "HAITIENNE": "HAITIAN",
+
+        "INDIAN": "INDIAN",
+        "INDIEN": "INDIAN",
+        "INDIENNE": "INDIAN",
+
+        "FRENCH": "FRENCH",
+        "FRANCAIS": "FRENCH",
+        "FRANÇAISE": "FRENCH",
+
+        "AMERICAN": "AMERICAN",
+        "CANADIAN": "CANADIAN",
+
+        "BRITISH": "BRITISH"
+    }
+
+    text_upper = text.upper()
+
+    for keyword, nationality in nationality_map.items():
+
+        if keyword in text_upper:
+            return nationality
+
 
     return None
 
@@ -331,26 +631,47 @@ def find_nationality(text):
 # SEX
 # ==========================================================
 
+
 def find_sex(text):
     """
     Find sex/gender from normal OCR text.
 
-    Expected values:
-
-    M = Male
-    F = Female
-    X = Other/unspecified
+    Supports:
+    Sex: M
+    Sex: F
+    Gender: M
+    FEMININ
+    FEMININE
+    FEMALE
+    MASCULIN
+    MASCULINE
+    MALE
     """
 
+    text_upper = text.upper()
+
+    # Explicit labelled M/F/X
     match = re.search(
-        r"(?:Sex|Gender)\s*[:\-]?\s*([MFX])\b",
-        text,
-        re.IGNORECASE
+        r"(?:SEX|GENDER|SEXE)\s*[:\-]?\s*([MFX])\b",
+        text_upper
     )
 
     if match:
+        return match.group(1)
 
-        return match.group(1).upper()
+    # Female variants
+    if re.search(
+        r"\b(FEMININ|FEMININE|FEMALE)\b",
+        text_upper
+    ):
+        return "F"
+
+    # Male variants
+    if re.search(
+        r"\b(MASCULIN|MASCULINE|MALE)\b",
+        text_upper
+    ):
+        return "M"
 
     return None
 
@@ -849,10 +1170,66 @@ def extract_information(text):
             "Birth Date"
         ]
     )
+# ======================================================
+    # NORMALIZE COMMON OCR DATE ERRORS
+    # ======================================================
 
+    date_text = re.sub(
+        r"([A-Za-z]+)[;,.]+([0-9]{4})",
+        r"\1 \2",
+        text
+    )
+
+    date_text = re.sub(
+        r"\b([A-Za-z]+)\s+4([0-9]{3})\b",
+        r"\1 1\2",
+        date_text
+    )
+
+
+    # ======================================================
+    # FIND ALL DATES
+    # ======================================================
+
+    date_matches = re.findall(
+        r"\b[0-9]{1,2}\s*(?:"
+        r"JAN(?:UARY)?|FEB(?:RUARY)?|MAR(?:CH)?|APR(?:IL)?|"
+        r"MAY|JUN(?:E)?|JUL(?:Y)?|AUG(?:UST)?|"
+        r"SEP(?:TEMBER)?|OCT(?:OBER)?|NOV(?:EMBER)?|DEC(?:EMBER)?|"
+        r"JANVIER|F[ÉE]VRIER|MARS|AVRIL|MAI|JUIN|"
+        r"JUILLET|AO[ÛU]T|SEPTEMBRE|OCTOBRE|"
+        r"NOVEMBRE|D[ÉE]CEMBRE|"
+        r"KAI|DECELBRE|DECENBRE|DECENIBRE|DECEMBRE|DECEYPRE"
+        r")\s*[0-9]{4}\b",
+        date_text,
+        re.IGNORECASE
+    )
+
+
+    # ======================================================
+    # ASSIGN DATES
+    # ======================================================
+    if len(date_matches) >= 3:
+
+        date_of_birth = date_matches[0].strip()
+
+        date_of_issue = date_matches[1].strip()
+
+        date_of_expiry = date_matches[2].strip()
+
+    else:
+
+        date_of_birth = find_date(
+        date_text,
+        [
+            "Date of Birth",
+            "DOB",
+            "Birth Date"
+        ]
+    )
 
     date_of_issue = find_date(
-        text,
+        date_text,
         [
             "Date of Issue",
             "Issue Date",
@@ -860,9 +1237,8 @@ def extract_information(text):
         ]
     )
 
-
     date_of_expiry = find_date(
-        text,
+        date_text,
         [
             "Date of Expiry",
             "Expiry Date",
@@ -871,6 +1247,22 @@ def extract_information(text):
         ]
     )
 
+
+    # ======================================================
+    # NORMALIZE EXTRACTED DATES
+    # ======================================================
+
+    date_of_birth = normalize_date(
+        date_of_birth
+    )
+
+    date_of_issue = normalize_date(
+        date_of_issue
+    )
+
+    date_of_expiry = normalize_date(
+        date_of_expiry
+    )
 
     nationality = find_nationality(
         text

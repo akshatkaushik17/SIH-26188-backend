@@ -5,10 +5,6 @@ import os
 from AI.processor import analyze_document
 
 
-# ==========================================
-# CREATE FASTAPI APPLICATION
-# ==========================================
-
 app = FastAPI(
     title="SIH26188 Document Verification API",
     description="AI document processing API for SIH prototype",
@@ -16,21 +12,12 @@ app = FastAPI(
 )
 
 
-# ==========================================
-# HOME / TEST ROUTE
-# ==========================================
-
 @app.get("/")
 def home():
-
     return {
         "message": "SIH26188 Document Verification API is running"
     }
 
-
-# ==========================================
-# DOCUMENT ANALYSIS ROUTE
-# ==========================================
 
 @app.post("/analyze")
 async def analyze(
@@ -38,44 +25,23 @@ async def analyze(
     face: UploadFile = File(None)
 ):
 
-    # ======================================
-    # STEP 1: SAVE DOCUMENT
-    # ======================================
-
+    # Save document
     document_path = "uploaded_document.png"
 
     with open(document_path, "wb") as buffer:
+        shutil.copyfileobj(document.file, buffer)
 
-        shutil.copyfileobj(
-            document.file,
-            buffer
-        )
-
-
-    # ======================================
-    # STEP 2: SAVE SECOND FACE IMAGE
-    # ======================================
-
+    # Save face image if provided
     face_path = None
 
     if face is not None:
-
-        face_path = "uploaded_face.jpg"
+        face_path = "uploaded_face.png"
 
         with open(face_path, "wb") as buffer:
+            shutil.copyfileobj(face.file, buffer)
 
-            shutil.copyfileobj(
-                face.file,
-                buffer
-            )
-
-
-    # ======================================
-    # STEP 3: RUN AI PIPELINE
-    # ======================================
-
+    # Run AI pipeline
     try:
-
         result = analyze_document(
             document_path,
             face_path
@@ -83,28 +49,14 @@ async def analyze(
 
     finally:
 
-        # ==================================
-        # DELETE DOCUMENT
-        # ==================================
-
+        # Delete document
         if os.path.exists(document_path):
-
             os.remove(document_path)
 
-
-        # ==================================
-        # DELETE FACE IMAGE
-        # ==================================
-
+        # Delete face image
         if face_path is not None:
-
             if os.path.exists(face_path):
-
                 os.remove(face_path)
 
-
-    # ======================================
-    # STEP 4: RETURN RESULT
-    # ======================================
-
-    return results 
+    # Return result
+    return result
