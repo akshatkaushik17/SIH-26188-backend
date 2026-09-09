@@ -16,7 +16,7 @@ easyocr==1.7.2
 
 facenet-pytorch==2.6.0
 
-fastapi==0.141.1
+fastapi[standard]==0.141.1
 
 filelock==3.32.5
 
