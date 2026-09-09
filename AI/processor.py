@@ -9,10 +9,20 @@ from AI.risk_score import calculate_risk_score
 
 
 # ==========================================================
-# CREATE OCR READER
+# OCR READER
 # ==========================================================
 
-reader = easyocr.Reader(['en'])
+reader = None
+
+
+def get_reader():
+    global reader
+
+    if reader is None:
+        print("Initializing EasyOCR...")
+        reader = easyocr.Reader(['en'])
+
+    return reader
 
 
 # ==========================================================
@@ -56,9 +66,9 @@ def analyze_document(
         "Step 2: Reading text with OCR..."
     )
 
-    results = reader.readtext(
-        processed_image
-    )
+    results = get_reader().readtext(
+    processed_image
+)
 
 
     # ======================================================
