@@ -38,8 +38,78 @@ def health():
     return {
         "status": "healthy"
     }
+@app.post("/test-upload")
+async def test_upload(document: UploadFile = File(...)):
+    data = await document.read()
+    return {
+        "filename": document.filename,
+        "size": len(data),
+        "content_type": document.content_type
+    }
+@app.get("/test-easyocr-import")
+def test_easyocr_import():
+    try:
+        import easyocr
+        return {
+            "status": "EasyOCR import OK",
+            "version": easyocr.__version__
+        }
+    except Exception as e:
+        return {
+            "status": "EasyOCR import failed",
+            "error": str(e)
+        }
+@app.get("/test-torch")
+def test_torch():
+    try:
+        import torch
+        return {
+            "status": "Torch OK",
+            "version": torch.__version__
+        }
+    except Exception as e:
+        return {
+            "status": "Torch failed",
+            "error": str(e)
+        }
+@app.get("/test-model-files")
+def test_model_files():
+    import os
 
+    model_dir = os.path.join(
+        os.path.dirname(__file__),
+        "models"
+    )
 
+    files = os.listdir(model_dir)
+
+    return {
+        "status": "Model directory OK",
+        "files": files,
+        "sizes": {
+            f: os.path.getsize(os.path.join(model_dir, f))
+            for f in files
+        }
+    }
+@app.get("/test-ai")
+def test_ai():
+    import traceback
+
+    try:
+        from AI.processor import get_reader
+        reader = get_reader()
+
+        return {
+            "status": "AI initialized successfully",
+            "easyocr": "OK"
+        }
+
+    except Exception as e:
+        return {
+            "status": "AI initialization failed",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 @app.post("/analyze")
 async def analyze(
     document: UploadFile = File(...),
