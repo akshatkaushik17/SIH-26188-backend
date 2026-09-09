@@ -115,49 +115,41 @@ async def analyze(
     document: UploadFile = File(...),
     face: UploadFile = File(None)
 ):
-    # Save document
-    document_path = "uploaded_document.png"
+    import traceback
 
+    document_path = "uploaded_document.png"
     with open(document_path, "wb") as buffer:
         shutil.copyfileobj(document.file, buffer)
 
-    # Save face image if provided
     face_path = None
-
     if face is not None:
         face_path = "uploaded_face.png"
-
         with open(face_path, "wb") as buffer:
             shutil.copyfileobj(face.file, buffer)
 
-    # Run AI pipeline
     try:
         from AI.processor import analyze_document
 
-        result = analyze_document(
-            document_path,
-            face_path
-        )
+        result = analyze_document(document_path, face_path)
+
+        scan_id = save_scan_result(result)
+        result["scan_id"] = scan_id
+
+        return result
+
+    except Exception as e:
+        return {
+            "status": "ANALYZE FAILED",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
 
     finally:
-        # Delete document
         if os.path.exists(document_path):
             os.remove(document_path)
 
-        # Delete face image
-        if face_path is not None:
-            if os.path.exists(face_path):
-                os.remove(face_path)
-
-    # Save analysis to verification history
-    scan_id = save_scan_result(result)
-
-    # Include scan ID in API response
-    result["scan_id"] = scan_id
-
-    # Return result
-    return result
-
+        if face_path is not None and os.path.exists(face_path):
+            os.remove(face_path)
 
 @app.get("/history")
 def history():
