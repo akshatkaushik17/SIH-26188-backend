@@ -10,7 +10,7 @@ dependencies = [
     "fastapi[standard]==0.141.1",
     "imageio==2.37.4",
     "numpy==1.26.4",
-    "opencv-python==4.10.0.84",
+    "opencv-python-headless==4.10.0.84",
     "opencv-python-headless==4.10.0.84",
     "pillow==10.2.0",
     "pyclipper==1.4.0",
