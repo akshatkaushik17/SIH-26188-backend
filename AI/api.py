@@ -4,7 +4,7 @@ import shutil
 import os
 
 from AI.processor import analyze_document
-
+from AI.database import save_scan_result, get_scan_history
 
 app = FastAPI(
     title="SIH26188 Document Verification API",
@@ -13,7 +13,13 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://projectsih-sigma.vercel.app"],
+    allow_origins=[
+    "https://projectsih-sigma.vercel.app",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://localhost:5175",
+    "http://localhost:5176",
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -65,5 +71,17 @@ async def analyze(
             if os.path.exists(face_path):
                 os.remove(face_path)
 
+    # Save analysis to verification history
+    scan_id = save_scan_result(result)
+
+    # Include scan ID in API response
+    result["scan_id"] = scan_id
+
     # Return result
     return result
+
+
+@app.get("/history")
+def history():
+
+    return get_scan_history()

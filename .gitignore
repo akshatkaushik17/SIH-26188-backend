@@ -8,3 +8,8 @@ processed_sample.png
 *.jpg
 *.jpeg
 *.png
+scan_history.db
+*.save
+*_backup.py
+requirements_backup.txt
+requirements_fixed.txt
