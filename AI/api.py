@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import shutil
 import os
 
-from AI.processor import analyze_document
 from AI.database import save_scan_result, get_scan_history
 
 app = FastAPI(
@@ -11,19 +10,21 @@ app = FastAPI(
     description="AI document processing API for SIH prototype",
     version="1.0"
 )
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-    "https://projectsih-sigma.vercel.app",
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://localhost:5175",
-    "http://localhost:5176",
-],
+        "https://projectsih-sigma.vercel.app",
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:5175",
+        "http://localhost:5176",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.get("/")
 def home():
@@ -32,12 +33,18 @@ def home():
     }
 
 
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy"
+    }
+
+
 @app.post("/analyze")
 async def analyze(
     document: UploadFile = File(...),
     face: UploadFile = File(None)
 ):
-
     # Save document
     document_path = "uploaded_document.png"
 
@@ -55,13 +62,14 @@ async def analyze(
 
     # Run AI pipeline
     try:
+        from AI.processor import analyze_document
+
         result = analyze_document(
             document_path,
             face_path
         )
 
     finally:
-
         # Delete document
         if os.path.exists(document_path):
             os.remove(document_path)
@@ -83,5 +91,4 @@ async def analyze(
 
 @app.get("/history")
 def history():
-
     return get_scan_history()
