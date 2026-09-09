@@ -2,7 +2,7 @@
 name = "sih-26188-backend"
 version = "0.1.0"
 description = "SIH 26188 Document Verification Backend"
-requires-python = ">=3.12"
+requires-python = "==3.12.*"
 
 dependencies = [
     "easyocr==1.7.2",
@@ -10,7 +10,6 @@ dependencies = [
     "fastapi[standard]==0.141.1",
     "imageio==2.37.4",
     "numpy==1.26.4",
-    "opencv-python-headless==4.10.0.84",
     "opencv-python-headless==4.10.0.84",
     "pillow==10.2.0",
     "pyclipper==1.4.0",
