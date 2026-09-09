@@ -1,3 +1,4 @@
+import os
 import easyocr
 
 from AI.extract_data import extract_information
@@ -19,8 +20,19 @@ def get_reader():
     global reader
 
     if reader is None:
-        print("Initializing EasyOCR...")
-        reader = easyocr.Reader(['en'])
+        print("Initializing EasyOCR from bundled models...")
+
+        model_dir = os.path.join(
+            os.path.dirname(__file__),
+            "models"
+        )
+
+        reader = easyocr.Reader(
+            ['en'],
+            model_storage_directory=model_dir,
+            download_enabled=False,
+            gpu=False
+        )
 
     return reader
 
