@@ -54,7 +54,7 @@ def get_reader():
 # LIGHTWEIGHT OCR
 # ==========================================================
 def run_lightweight_ocr(image_path):
-    print("Running lightweight OCR...")
+    print("Running memory-efficient OCR...")
 
     image = cv2.imread(image_path)
 
@@ -64,118 +64,110 @@ def run_lightweight_ocr(image_path):
 
     height, width = image.shape[:2]
 
-    ocr_reader = get_reader()
+    # Limit image size to reduce cloud memory usage.
+    max_width = 1200
 
-    all_results = []
-    regions = []
+    if width > max_width:
+        scale = max_width / width
+        new_width = max_width
+        new_height = int(height * scale)
 
-    strip_height = max(120, int(height * 0.20))
-    step = max(100, int(height * 0.20))
-
-    y = 0
-
-    while y < height:
-        y2 = min(y + strip_height, height)
-
-        if y2 - y >= 40:
-            regions.append((0, width, y, y2))
-
-        if y2 == height:
-            break
-
-        y += step
-
-    print("OCR regions:", len(regions))
-
-    for index, (x1, x2, y1, y2) in enumerate(regions):
-        crop = image[y1:y2, x1:x2]
-
-        if crop.size == 0:
-            continue
-
-        crop = cv2.resize(
-            crop,
-            None,
-            fx=2,
-            fy=2,
-            interpolation=cv2.INTER_CUBIC
+        image = cv2.resize(
+            image,
+            (new_width, new_height),
+            interpolation=cv2.INTER_AREA
         )
 
-        temp_file = f"ocr_region_{index}.png"
-        cv2.imwrite(temp_file, crop)
+        print(
+            f"OCR image resized from "
+            f"{width}x{height} to "
+            f"{new_width}x{new_height}"
+        )
 
-        try:
-            crop_height, crop_width = crop.shape[:2]
+    ocr_reader = get_reader()
 
-            result = ocr_reader.recognize(
-                temp_file,
-                horizontal_list=[
-                    [0, crop_width, 0, crop_height]
-                ],
-                free_list=[]
-            )
+    crop_height = image.shape[0]
+    crop_width = image.shape[1]
 
-            for item in result:
-                if len(item) < 3:
-                    continue
+    temp_file = "ocr_single_region.png"
 
-                text = str(item[1]).strip()
-                confidence = float(item[2])
+    cv2.imwrite(temp_file, image)
 
-                if text:
-                    all_results.append((text, confidence))
-                    print(
-                        f"OCR region {index}: "
-                        f"{text} "
-                        f"(confidence={confidence:.3f})"
-                    )
+    try:
+        result = ocr_reader.recognize(
+            temp_file,
+            horizontal_list=[
+                [0, crop_width, 0, crop_height]
+            ],
+            free_list=[]
+        )
 
-        except Exception as e:
-            print(
-                f"OCR region {index} failed:",
-                str(e)
-            )
+        all_results = []
 
-        finally:
-            if os.path.exists(temp_file):
-                os.remove(temp_file)
+        for item in result:
+            if len(item) < 3:
+                continue
 
-    if not all_results:
-        print("OCR detected no text.")
+            text = str(item[1]).strip()
+            confidence = float(item[2])
+
+            if text:
+                all_results.append(
+                    (text, confidence)
+                )
+
+                print(
+                    f"OCR: {text} "
+                    f"(confidence={confidence:.3f})"
+                )
+
+        if not all_results:
+            print("OCR detected no text.")
+            return "", 0.0
+
+        useful_results = [
+            item
+            for item in all_results
+            if item[1] >= 0.10
+        ]
+
+        if not useful_results:
+            useful_results = all_results
+
+        full_text = ""
+
+        total_confidence = 0.0
+
+        for text, confidence in useful_results:
+            full_text += text + "\n"
+            total_confidence += confidence
+
+        average_confidence = (
+            total_confidence /
+            len(useful_results)
+        ) * 100
+
+        print("OCR completed.")
+        print(
+            "Detected OCR items:",
+            len(useful_results)
+        )
+
+        print(
+            "OCR confidence:",
+            round(average_confidence, 2),
+            "%"
+        )
+
+        return full_text, average_confidence
+
+    except Exception as e:
+        print("OCR failed:", str(e))
         return "", 0.0
 
-    useful_results = [
-        item for item in all_results
-        if item[1] >= 0.10
-    ]
-
-    if not useful_results:
-        useful_results = all_results
-
-    full_text = ""
-    total_confidence = 0.0
-
-    for text, confidence in useful_results:
-        full_text += text + "\n"
-        total_confidence += confidence
-
-    average_confidence = (
-        total_confidence / len(useful_results)
-    ) * 100
-
-    print("OCR completed.")
-    print(
-        "Detected OCR items:",
-        len(useful_results)
-    )
-    print(
-        "OCR confidence:",
-        round(average_confidence, 2),
-        "%"
-    )
-
-    return full_text, average_confidence
-
+    finally:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)
 # ==========================================================
 # MAIN DOCUMENT ANALYSIS FUNCTION
 # ==========================================================
