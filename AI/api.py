@@ -201,3 +201,31 @@ async def analyze(
 @app.get("/history")
 def history():
     return get_scan_history()
+@app.get("/test-easyocr-full")
+def test_easyocr_full():
+    try:
+        import os
+        import easyocr
+
+        model_dir = os.path.join(os.path.dirname(__file__), "models")
+
+        reader = easyocr.Reader(
+            ['en'],
+            model_storage_directory=model_dir,
+            download_enabled=False,
+            gpu=False,
+            verbose=False
+        )
+
+        return {
+            "status": "FULL EASYOCR OK",
+            "reader_loaded": reader is not None
+        }
+
+    except Exception as e:
+        import traceback
+        return {
+            "status": "FULL EASYOCR FAILED",
+            "error": str(e),
+            "traceback": traceback.format_exc()
+        }
