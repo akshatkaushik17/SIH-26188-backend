@@ -13,3 +13,4 @@ scan_history.db
 *_backup.py
 requirements_backup.txt
 requirements_fixed.txt
+AI/models/20180402-114759-vggface2.pt
