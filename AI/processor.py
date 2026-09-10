@@ -53,17 +53,13 @@ def get_reader():
 # ==========================================================
 # LIGHTWEIGHT OCR
 # ==========================================================
-
 def run_lightweight_ocr(image_path):
-
     print("Running lightweight OCR...")
 
     image = cv2.imread(image_path)
 
     if image is None:
-
         print("OCR ERROR: image could not be loaded.")
-
         return "", 0.0
 
     height, width = image.shape[:2]
@@ -71,59 +67,32 @@ def run_lightweight_ocr(image_path):
     ocr_reader = get_reader()
 
     all_results = []
-
-    # ------------------------------------------------------
-    # Divide image into horizontal regions.
-    #
-    # We do this because the EasyOCR detector is disabled.
-    # Each region is supplied directly to the recognizer.
-    # ------------------------------------------------------
-
     regions = []
 
-    # Main horizontal strips
-    strip_height = max(120, int(height * 0.15))
-    step = max(80, int(height * 0.12))
+    strip_height = max(120, int(height * 0.20))
+    step = max(100, int(height * 0.20))
 
     y = 0
 
     while y < height:
-
         y2 = min(y + strip_height, height)
 
         if y2 - y >= 40:
-
-            regions.append(
-                (
-                    0,
-                    width,
-                    y,
-                    y2
-                )
-            )
+            regions.append((0, width, y, y2))
 
         if y2 == height:
             break
 
         y += step
 
-    print(
-        "OCR regions:",
-        len(regions)
-    )
-
-    # ------------------------------------------------------
-    # Recognize each region
-    # ------------------------------------------------------
+    print("OCR regions:", len(regions))
 
     for index, (x1, x2, y1, y2) in enumerate(regions):
-
         crop = image[y1:y2, x1:x2]
 
         if crop.size == 0:
             continue
 
-        # Upscale moderately
         crop = cv2.resize(
             crop,
             None,
@@ -133,31 +102,20 @@ def run_lightweight_ocr(image_path):
         )
 
         temp_file = f"ocr_region_{index}.png"
-
-        cv2.imwrite(
-            temp_file,
-            crop
-        )
+        cv2.imwrite(temp_file, crop)
 
         try:
-
             crop_height, crop_width = crop.shape[:2]
 
             result = ocr_reader.recognize(
                 temp_file,
                 horizontal_list=[
-                    [
-                        0,
-                        crop_width,
-                        0,
-                        crop_height
-                    ]
+                    [0, crop_width, 0, crop_height]
                 ],
                 free_list=[]
             )
 
             for item in result:
-
                 if len(item) < 3:
                     continue
 
@@ -165,14 +123,7 @@ def run_lightweight_ocr(image_path):
                 confidence = float(item[2])
 
                 if text:
-
-                    all_results.append(
-                        (
-                            text,
-                            confidence
-                        )
-                    )
-
+                    all_results.append((text, confidence))
                     print(
                         f"OCR region {index}: "
                         f"{text} "
@@ -180,87 +131,50 @@ def run_lightweight_ocr(image_path):
                     )
 
         except Exception as e:
-
             print(
                 f"OCR region {index} failed:",
                 str(e)
             )
 
         finally:
-
             if os.path.exists(temp_file):
-
                 os.remove(temp_file)
 
-    # ------------------------------------------------------
-    # If nothing was detected
-    # ------------------------------------------------------
-
     if not all_results:
-
         print("OCR detected no text.")
-
         return "", 0.0
 
-    # ------------------------------------------------------
-    # Remove extremely low-confidence results
-    # ------------------------------------------------------
-
     useful_results = [
-        item
-        for item in all_results
+        item for item in all_results
         if item[1] >= 0.10
     ]
 
-    # If filtering removes everything,
-    # keep the original results so the pipeline
-    # still returns something.
-
     if not useful_results:
-
         useful_results = all_results
 
-    # ------------------------------------------------------
-    # Combine text
-    # ------------------------------------------------------
-
     full_text = ""
-
     total_confidence = 0.0
 
     for text, confidence in useful_results:
-
         full_text += text + "\n"
-
         total_confidence += confidence
 
     average_confidence = (
-        total_confidence
-        / len(useful_results)
+        total_confidence / len(useful_results)
     ) * 100
 
-    print()
     print("OCR completed.")
-
     print(
         "Detected OCR items:",
         len(useful_results)
     )
-
     print(
         "OCR confidence:",
-        round(
-            average_confidence,
-            2
-        ),
+        round(average_confidence, 2),
         "%"
     )
 
-    return (
-        full_text,
-        average_confidence
-    )
-
+    return full_text, average_confidence
 
 # ==========================================================
 # MAIN DOCUMENT ANALYSIS FUNCTION

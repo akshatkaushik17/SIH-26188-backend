@@ -1,9 +1,11 @@
+import os
 from PIL import Image
 from facenet_pytorch import MTCNN, InceptionResnetV1
 import torch
 import torch.nn.functional as F
 
-# Models are loaded only when face verification is actually used.
+
+# Models are loaded only when face verification is used.
 mtcnn = None
 resnet = None
 
@@ -12,7 +14,18 @@ def get_face_models():
     global mtcnn, resnet
 
     if mtcnn is None or resnet is None:
-        print("Loading face recognition model...")
+        print("Loading local face recognition model...")
+
+        model_path = os.path.join(
+            os.path.dirname(__file__),
+            "models",
+            "20180402-114759-vggface2.pt"
+        )
+
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(
+                f"FaceNet model not found: {model_path}"
+            )
 
         mtcnn = MTCNN(
             image_size=160,
@@ -21,10 +34,17 @@ def get_face_models():
         )
 
         resnet = InceptionResnetV1(
-            pretrained="vggface2"
+            pretrained=None
         ).eval()
 
-        print("Face recognition model loaded.")
+        state_dict = torch.load(
+            model_path,
+            map_location=torch.device("cpu")
+        )
+
+        resnet.load_state_dict(state_dict, strict=False)
+
+        print("Local FaceNet model loaded successfully.")
 
     return mtcnn, resnet
 
@@ -53,7 +73,11 @@ def create_embedding(face):
     with torch.no_grad():
         embedding = resnet(face)
 
-    embedding = F.normalize(embedding, p=2, dim=1)
+    embedding = F.normalize(
+        embedding,
+        p=2,
+        dim=1
+    )
 
     return embedding
 
@@ -71,6 +95,9 @@ def compare_faces(passport_face, second_face):
 
 
 def verify_faces(passport_image_path, second_image_path):
+
+    print("Running face verification...")
+
     passport_face = extract_face(passport_image_path)
     second_face = extract_face(second_image_path)
 
@@ -84,7 +111,9 @@ def verify_faces(passport_image_path, second_image_path):
             "similarity": 0.0,
             "threshold": 0.60,
             "match": False,
-            "details": "Could not detect a face in one or both images."
+            "details": (
+                "Could not detect a face in one or both images."
+            )
         }
 
     similarity = compare_faces(
