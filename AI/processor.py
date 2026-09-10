@@ -30,9 +30,7 @@ def get_reader():
         reader = easyocr.Reader(
     ['en'],
     model_storage_directory=model_dir,
-    download_enabled=False,
-    gpu=False,
-    detector=False
+    gpu=False
 )
 
     return reader
