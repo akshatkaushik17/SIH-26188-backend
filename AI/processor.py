@@ -1,4 +1,5 @@
 import os
+import cv2
 import easyocr
 
 from AI.extract_data import extract_information
@@ -20,20 +21,245 @@ def get_reader():
     global reader
 
     if reader is None:
-        print("Initializing EasyOCR from bundled models...")
+
+        print("Initializing EasyOCR recognizer from bundled models...")
 
         model_dir = os.path.join(
             os.path.dirname(__file__),
             "models"
         )
 
+        # IMPORTANT:
+        # detector=False prevents EasyOCR from loading
+        # the large text-detection model.
+        #
+        # This is required for the memory-limited
+        # FastAPI Cloud deployment.
+
         reader = easyocr.Reader(
-    ['en'],
-    model_storage_directory=model_dir,
-    gpu=False
-)
+            ['en'],
+            model_storage_directory=model_dir,
+            download_enabled=False,
+            gpu=False,
+            verbose=False,
+            detector=False
+        )
+
+        print("EasyOCR recognizer loaded successfully.")
 
     return reader
+
+
+# ==========================================================
+# LIGHTWEIGHT OCR
+# ==========================================================
+
+def run_lightweight_ocr(image_path):
+
+    print("Running lightweight OCR...")
+
+    image = cv2.imread(image_path)
+
+    if image is None:
+
+        print("OCR ERROR: image could not be loaded.")
+
+        return "", 0.0
+
+    height, width = image.shape[:2]
+
+    ocr_reader = get_reader()
+
+    all_results = []
+
+    # ------------------------------------------------------
+    # Divide image into horizontal regions.
+    #
+    # We do this because the EasyOCR detector is disabled.
+    # Each region is supplied directly to the recognizer.
+    # ------------------------------------------------------
+
+    regions = []
+
+    # Main horizontal strips
+    strip_height = max(120, int(height * 0.15))
+    step = max(80, int(height * 0.12))
+
+    y = 0
+
+    while y < height:
+
+        y2 = min(y + strip_height, height)
+
+        if y2 - y >= 40:
+
+            regions.append(
+                (
+                    0,
+                    width,
+                    y,
+                    y2
+                )
+            )
+
+        if y2 == height:
+            break
+
+        y += step
+
+    print(
+        "OCR regions:",
+        len(regions)
+    )
+
+    # ------------------------------------------------------
+    # Recognize each region
+    # ------------------------------------------------------
+
+    for index, (x1, x2, y1, y2) in enumerate(regions):
+
+        crop = image[y1:y2, x1:x2]
+
+        if crop.size == 0:
+            continue
+
+        # Upscale moderately
+        crop = cv2.resize(
+            crop,
+            None,
+            fx=2,
+            fy=2,
+            interpolation=cv2.INTER_CUBIC
+        )
+
+        temp_file = f"ocr_region_{index}.png"
+
+        cv2.imwrite(
+            temp_file,
+            crop
+        )
+
+        try:
+
+            crop_height, crop_width = crop.shape[:2]
+
+            result = ocr_reader.recognize(
+                temp_file,
+                horizontal_list=[
+                    [
+                        0,
+                        crop_width,
+                        0,
+                        crop_height
+                    ]
+                ],
+                free_list=[]
+            )
+
+            for item in result:
+
+                if len(item) < 3:
+                    continue
+
+                text = str(item[1]).strip()
+                confidence = float(item[2])
+
+                if text:
+
+                    all_results.append(
+                        (
+                            text,
+                            confidence
+                        )
+                    )
+
+                    print(
+                        f"OCR region {index}: "
+                        f"{text} "
+                        f"(confidence={confidence:.3f})"
+                    )
+
+        except Exception as e:
+
+            print(
+                f"OCR region {index} failed:",
+                str(e)
+            )
+
+        finally:
+
+            if os.path.exists(temp_file):
+
+                os.remove(temp_file)
+
+    # ------------------------------------------------------
+    # If nothing was detected
+    # ------------------------------------------------------
+
+    if not all_results:
+
+        print("OCR detected no text.")
+
+        return "", 0.0
+
+    # ------------------------------------------------------
+    # Remove extremely low-confidence results
+    # ------------------------------------------------------
+
+    useful_results = [
+        item
+        for item in all_results
+        if item[1] >= 0.10
+    ]
+
+    # If filtering removes everything,
+    # keep the original results so the pipeline
+    # still returns something.
+
+    if not useful_results:
+
+        useful_results = all_results
+
+    # ------------------------------------------------------
+    # Combine text
+    # ------------------------------------------------------
+
+    full_text = ""
+
+    total_confidence = 0.0
+
+    for text, confidence in useful_results:
+
+        full_text += text + "\n"
+
+        total_confidence += confidence
+
+    average_confidence = (
+        total_confidence
+        / len(useful_results)
+    ) * 100
+
+    print()
+    print("OCR completed.")
+
+    print(
+        "Detected OCR items:",
+        len(useful_results)
+    )
+
+    print(
+        "OCR confidence:",
+        round(
+            average_confidence,
+            2
+        ),
+        "%"
+    )
+
+    return (
+        full_text,
+        average_confidence
+    )
 
 
 # ==========================================================
@@ -51,7 +277,6 @@ def analyze_document(
     print("========================================")
     print()
 
-
     # ======================================================
     # STEP 1: PREPROCESS IMAGE
     # ======================================================
@@ -67,7 +292,6 @@ def analyze_document(
         processed_image
     )
 
-
     # ======================================================
     # STEP 2: RUN OCR
     # ======================================================
@@ -77,81 +301,30 @@ def analyze_document(
         "Step 2: Reading text with OCR..."
     )
 
-    results = get_reader().readtext(
-    processed_image
-)
-
-
-    # ======================================================
-    # STEP 3: COMBINE OCR TEXT
-    # ======================================================
-
-    print()
-    print(
-        "Step 3: Combining detected text..."
+    full_text, average_confidence = run_lightweight_ocr(
+        processed_image
     )
 
-    full_text = ""
-
-    total_confidence = 0
-
-    detected_items = 0
-
-
-    for result in results:
-
-        text = result[1]
-
-        confidence = result[2]
-
-        full_text = (
-            full_text
-            + text
-            + "\n"
-        )
-
-        total_confidence += confidence
-
-        detected_items += 1
-
-
     # ======================================================
-    # STEP 4: CALCULATE OCR CONFIDENCE
-    # ======================================================
-
-    if detected_items > 0:
-
-        average_confidence = (
-            total_confidence
-            / detected_items
-        ) * 100
-
-    else:
-
-        average_confidence = 0
-
-
-    # ======================================================
-    # STEP 5: EXTRACT INFORMATION
+    # STEP 3: EXTRACT INFORMATION
     # ======================================================
 
     print()
     print(
-        "Step 4: Extracting useful information..."
+        "Step 3: Extracting useful information..."
     )
 
     information = extract_information(
         full_text
     )
 
-
     # ======================================================
-    # STEP 6: VERIFY DOCUMENT
+    # STEP 4: VERIFY DOCUMENT
     # ======================================================
 
     print()
     print(
-        "Step 5: Checking document..."
+        "Step 4: Checking document..."
     )
 
     verification = verify_document(
@@ -159,47 +332,36 @@ def analyze_document(
         average_confidence
     )
 
-
     # ======================================================
-    # STEP 7: DETECT TAMPERING
+    # STEP 5: DETECT TAMPERING
     # ======================================================
 
     print()
     print(
-        "Step 6: Checking for possible tampering..."
+        "Step 5: Checking for possible tampering..."
     )
 
     # IMPORTANT:
     #
-    # Tampering detection uses the ORIGINAL image.
+    # Tampering detection uses ORIGINAL image.
     #
-    # OCR uses the processed image.
+    # OCR uses processed image.
     #
-    # This prevents OCR preprocessing from interfering
-    # with the forensic/tampering analysis.
+    # This keeps OCR preprocessing separate from
+    # forensic/tampering analysis.
 
     tampering = detect_tampering(
         image_path
     )
 
-
     # ======================================================
-    # STEP 8: FACE VERIFICATION
+    # STEP 6: FACE VERIFICATION
     # ======================================================
 
     print()
     print(
-        "Step 7: Checking face identity..."
+        "Step 6: Checking face identity..."
     )
-
-
-    # ------------------------------------------------------
-    # DEFAULT RESULT
-    # ------------------------------------------------------
-    #
-    # If no second face image is supplied, we don't try
-    # to perform face verification.
-    #
 
     if face_image_path is not None:
 
@@ -243,16 +405,14 @@ def analyze_document(
                 "because no second face image was supplied."
         }
 
-
     # ======================================================
-    # STEP 9: CALCULATE COMBINED RISK SCORE
+    # STEP 7: CALCULATE COMBINED RISK SCORE
     # ======================================================
 
     print()
     print(
-        "Step 8: Calculating combined risk score..."
+        "Step 7: Calculating combined risk score..."
     )
-
 
     risk_result = calculate_risk_score(
 
@@ -265,68 +425,32 @@ def analyze_document(
         face_verification=face_verification
     )
 
-
     # ======================================================
-    # STEP 10: CREATE FINAL RESULT
+    # STEP 8: CREATE FINAL RESULT
     # ======================================================
 
     final_result = {
 
-        # --------------------------------------------------
-        # RAW OCR
-        # --------------------------------------------------
-
         "raw_text": full_text,
-
-
-        # --------------------------------------------------
-        # OCR
-        # --------------------------------------------------
 
         "ocr_confidence": round(
             average_confidence,
             2
         ),
 
-
-        # --------------------------------------------------
-        # STRUCTURED INFORMATION
-        # --------------------------------------------------
-
         "information": information,
-
-
-        # --------------------------------------------------
-        # DOCUMENT VALIDATION
-        # --------------------------------------------------
 
         "verification": verification,
 
-
-        # --------------------------------------------------
-        # TAMPERING
-        # --------------------------------------------------
-
         "tampering": tampering,
 
-
-        # --------------------------------------------------
-        # FACE VERIFICATION
-        # --------------------------------------------------
-
         "face_verification": face_verification,
-
-
-        # --------------------------------------------------
-        # COMBINED RISK
-        # --------------------------------------------------
 
         "risk": risk_result
     }
 
-
     # ======================================================
-    # STEP 11: DISPLAY SUMMARY
+    # STEP 9: DISPLAY SUMMARY
     # ======================================================
 
     print()
@@ -345,11 +469,6 @@ def analyze_document(
 
     print()
 
-
-    # ------------------------------------------------------
-    # OCR
-    # ------------------------------------------------------
-
     print(
         "OCR confidence:",
         round(
@@ -358,11 +477,6 @@ def analyze_document(
         ),
         "%"
     )
-
-
-    # ------------------------------------------------------
-    # TAMPERING
-    # ------------------------------------------------------
 
     print()
 
@@ -380,11 +494,6 @@ def analyze_document(
         ]
     )
 
-
-    # ------------------------------------------------------
-    # FACE
-    # ------------------------------------------------------
-
     print()
 
     print(
@@ -400,11 +509,6 @@ def analyze_document(
             "similarity"
         ]
     )
-
-
-    # ------------------------------------------------------
-    # RISK
-    # ------------------------------------------------------
 
     print()
 
@@ -424,9 +528,8 @@ def analyze_document(
 
     print()
 
-
     # ======================================================
-    # STEP 12: RETURN RESULT
+    # STEP 10: RETURN RESULT
     # ======================================================
 
     return final_result
