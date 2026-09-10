@@ -1,0 +1,13 @@
+STANDARD SAMPLE DOCUMENT - DEMO ONLY
+
+Document Type: Passport
+Document Number: DEMO-P1234567
+Name: SAMPLE CITIZEN
+Date of Birth: 01-01-1995
+Nationality: DEMO
+Sex: M
+Date of Issue: 01-01-2025
+Date of Expiry: 01-01-2035
+
+THIS IS A SYNTHETIC TEST DOCUMENT.
+NOT A REAL GOVERNMENT DOCUMENT.

@@ -1,0 +1,13 @@
+STANDARD SAMPLE DOCUMENT - DEMO ONLY
+
+Document Type: Identity Card
+Document Number: DEMO-ID-10001
+Name: TEST PERSON
+Date of Birth: 15-05-1998
+Nationality: DEMO
+Sex: F
+Issue Date: 10-01-2025
+Expiry Date: 10-01-2030
+
+THIS IS A SYNTHETIC TEST DOCUMENT.
+NOT A REAL GOVERNMENT DOCUMENT.

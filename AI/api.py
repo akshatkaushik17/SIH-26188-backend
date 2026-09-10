@@ -163,28 +163,148 @@ async def analyze(
     face: UploadFile = File(None)
 ):
     import traceback
+    import uuid
 
     document_path = "uploaded_document.png"
-    with open(document_path, "wb") as buffer:
-        shutil.copyfileobj(document.file, buffer)
-
     face_path = None
-    if face is not None:
-        face_path = "uploaded_face.png"
-        with open(face_path, "wb") as buffer:
-            shutil.copyfileobj(face.file, buffer)
 
     try:
+        # -------------------------------------------------
+        # STEP 1: Save uploaded files temporarily
+        # -------------------------------------------------
+
+        with open(document_path, "wb") as buffer:
+            shutil.copyfileobj(document.file, buffer)
+
+        if face is not None:
+            face_path = "uploaded_face.png"
+
+            with open(face_path, "wb") as buffer:
+                shutil.copyfileobj(face.file, buffer)
+
+        # -------------------------------------------------
+        # STEP 2: Run complete AI analysis
+        # -------------------------------------------------
+
         from AI.processor import analyze_document
 
-        result = analyze_document(document_path, face_path)
+        result = analyze_document(
+            document_path,
+            face_path
+        )
 
-        scan_id = save_scan_result(result)
+        # -------------------------------------------------
+        # STEP 3: Determine risk level
+        # -------------------------------------------------
+
+        risk = result.get("risk", {})
+
+        risk_level = str(
+            risk.get("risk_level", "REVIEW")
+        ).upper()
+
+        if risk_level in ["DANGER", "HIGH", "CRITICAL"]:
+            decision = "DANGER"
+
+        elif risk_level in ["SAFE", "LOW"]:
+            decision = "SAFE"
+
+        else:
+            decision = "REVIEW"
+
+        # -------------------------------------------------
+        # STEP 4: Store dangerous captures
+        # -------------------------------------------------
+
+        stored_document = None
+        stored_face = None
+
+        if decision == "DANGER":
+
+            danger_directory = os.path.join(
+                os.path.dirname(__file__),
+                "storage",
+                "danger"
+            )
+
+            os.makedirs(
+                danger_directory,
+                exist_ok=True
+            )
+
+            unique_id = str(uuid.uuid4())
+
+            # Store document
+            document_filename = (
+                f"{unique_id}_document.png"
+            )
+
+            stored_document_path = os.path.join(
+                danger_directory,
+                document_filename
+            )
+
+            shutil.copy2(
+                document_path,
+                stored_document_path
+            )
+
+            stored_document = (
+                f"storage/danger/{document_filename}"
+            )
+
+            # Store face image if supplied
+            if face_path is not None:
+
+                face_filename = (
+                    f"{unique_id}_face.png"
+                )
+
+                stored_face_path = os.path.join(
+                    danger_directory,
+                    face_filename
+                )
+
+                shutil.copy2(
+                    face_path,
+                    stored_face_path
+                )
+
+                stored_face = (
+                    f"storage/danger/{face_filename}"
+                )
+
+            print(
+                "DANGER detected - captured files stored."
+            )
+
+        else:
+
+            print(
+                f"{decision} result - input documents will not be stored."
+            )
+
+        # -------------------------------------------------
+        # STEP 5: Save audit/history record
+        # -------------------------------------------------
+
+        scan_id = save_scan_result(
+            result,
+            stored_document=stored_document,
+            stored_face=stored_face
+        )
+
         result["scan_id"] = scan_id
+        result["decision"] = decision
+
+        # -------------------------------------------------
+        # STEP 6: Return result
+        # -------------------------------------------------
 
         return result
 
     except Exception as e:
+
         return {
             "status": "ANALYZE FAILED",
             "error": str(e),
@@ -192,12 +312,17 @@ async def analyze(
         }
 
     finally:
+
+        # -------------------------------------------------
+        # STEP 7: Delete temporary uploads
+        # -------------------------------------------------
+
         if os.path.exists(document_path):
             os.remove(document_path)
 
-        if face_path is not None and os.path.exists(face_path):
-            os.remove(face_path)
-
+        if face_path is not None:
+            if os.path.exists(face_path):
+                os.remove(face_path)
 @app.get("/history")
 def history():
     return get_scan_history()

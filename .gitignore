@@ -14,3 +14,14 @@ scan_history.db
 requirements_backup.txt
 requirements_fixed.txt
 AI/models/20180402-114759-vggface2.pt
+AI/models/20180402-114759-vggface2.pt
+AI/storage/danger/*
+
+# Local backup files
+*.backup
+*.backup~
+*.broken
+
+# Runtime/generated files
+AI/storage/danger/*
+AI/scan_history.db
