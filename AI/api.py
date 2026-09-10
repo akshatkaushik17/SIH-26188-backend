@@ -46,18 +46,53 @@ async def test_upload(document: UploadFile = File(...)):
         "size": len(data),
         "content_type": document.content_type
     }
-@app.get("/test-easyocr-import")
-def test_easyocr_import():
+@app.get("/test-easyocr-reader")
+def test_easyocr_reader():
     try:
+        import os
         import easyocr
+        from PIL import Image, ImageDraw
+
+        model_dir = os.path.join(
+            os.path.dirname(__file__),
+            "models"
+        )
+
+        test_image = "/tmp/easyocr_test.png"
+
+        img = Image.new("RGB", (800, 200), "white")
+        draw = ImageDraw.Draw(img)
+        draw.text((50, 70), "HELLO WORLD 12345", fill="black")
+        img.save(test_image)
+
+        reader = easyocr.Reader(
+            ['en'],
+            model_storage_directory=model_dir,
+            download_enabled=False,
+            gpu=False,
+            verbose=False,
+            detector=False
+        )
+
+        result = reader.recognize(
+    test_image,
+    horizontal_list=[[0, 800, 70, 130]],
+    free_list=[]
+)
+
         return {
-            "status": "EasyOCR import OK",
-            "version": easyocr.__version__
+            "status": "EasyOCR recognition test OK",
+            "reader_loaded": reader is not None,
+            "result": str(result)
         }
+
     except Exception as e:
+        import traceback
+
         return {
-            "status": "EasyOCR import failed",
-            "error": str(e)
+            "status": "EasyOCR recognition test FAILED",
+            "error": str(e),
+            "traceback": traceback.format_exc()
         }
 @app.get("/test-torch")
 def test_torch():
@@ -91,22 +126,34 @@ def test_model_files():
             for f in files
         }
     }
+@app.get("/test-tesseract")
+def test_tesseract():
+    import shutil
+
+    tesseract_path = shutil.which("tesseract")
+
+    return {
+        "tesseract_available": tesseract_path is not None,
+        "path": tesseract_path
+    }
+@app.get("/test-easyocr-reader")
 @app.get("/test-ai")
 def test_ai():
-    import traceback
-
     try:
-        from AI.processor import get_reader
+        from .processor import get_reader
+
         reader = get_reader()
 
         return {
-            "status": "AI initialized successfully",
-            "easyocr": "OK"
+            "status": "AI OK",
+            "reader_loaded": reader is not None
         }
 
     except Exception as e:
+        import traceback
+
         return {
-            "status": "AI initialization failed",
+            "status": "AI FAILED",
             "error": str(e),
             "traceback": traceback.format_exc()
         }
