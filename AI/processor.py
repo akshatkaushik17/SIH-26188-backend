@@ -259,9 +259,8 @@ def analyze_document(
     tampering = detect_tampering(
         image_path
     )
-
     # ======================================================
-    # STEP 6: FACE VERIFICATION
+    # STEP 6: VERIFY FACE IDENTITY
     # ======================================================
 
     print()
@@ -269,48 +268,46 @@ def analyze_document(
         "Step 6: Checking face identity..."
     )
 
-    if face_image_path is not None:
+    if face_image_path:
+        print("Second face image supplied.")
 
-        print(
-            "Second face image supplied."
-        )
+        try:
+            face_verification = verify_faces(
+                image_path,
+                face_image_path
+            )
 
-        print(
-            "Running face verification..."
-        )
+        except Exception as e:
+            print(
+                "Face verification failed:",
+                str(e)
+            )
 
-        face_verification = verify_faces(
-            image_path,
-            face_image_path
-        )
+            face_verification = {
+                "passport_face_detected": False,
+                "second_face_detected": False,
+                "similarity": 0.0,
+                "threshold": 0.60,
+                "match": False,
+                "details": (
+                    f"Face verification failed: {str(e)}"
+                )
+            }
 
     else:
-
-        print(
-            "No second face image supplied."
-        )
-
-        print(
-            "Face verification skipped."
-        )
+        print("No second face image supplied.")
 
         face_verification = {
-
             "passport_face_detected": False,
-
             "second_face_detected": False,
-
             "similarity": 0.0,
-
             "threshold": 0.60,
-
             "match": False,
-
-            "details":
-                "Face verification was not performed "
-                "because no second face image was supplied."
+            "details": "No second face image supplied."
         }
 
+    # ======================================================
+    # STEP 7: CALCULATE COMBINED RISK SCORE
     # ======================================================
     # STEP 7: CALCULATE COMBINED RISK SCORE
     # ======================================================
