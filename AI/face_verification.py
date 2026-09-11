@@ -1,6 +1,7 @@
 import os
 import gc
 
+CLOUD_DEPLOYMENT = os.getenv("CLOUD_DEPLOYMENT", "").lower() == "true"
 from PIL import Image
 from facenet_pytorch import MTCNN, InceptionResnetV1
 import torch
@@ -153,6 +154,35 @@ def verify_faces(passport_image_path, second_image_path):
                 "Could not detect a face in one or both images."
             )
         }
+    # ---------------------------------------------------------
+    # STEP 2: Cloud-safe mode
+    # ---------------------------------------------------------
+
+    if CLOUD_DEPLOYMENT:
+        print(
+            "Cloud deployment detected. "
+            "Skipping FaceNet model loading."
+        )
+
+        del passport_face
+        del second_face
+        gc.collect()
+
+        return {
+            "passport_face_detected": passport_detected,
+            "second_face_detected": second_detected,
+            "similarity": 0.0,
+            "threshold": 0.60,
+            "match": False,
+            "details": (
+                "Cloud deployment: FaceNet verification skipped "
+                "to conserve server resources."
+            )
+        }
+
+    # ---------------------------------------------------------
+    # STEP 3: Load FaceNet only after MTCNN is released
+    # ---------------------------------------------------------
 
     # ---------------------------------------------------------
     # STEP 2: Load FaceNet only after MTCNN is released
