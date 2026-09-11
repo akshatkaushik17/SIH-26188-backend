@@ -162,6 +162,55 @@ def verify_faces(passport_image_path, second_image_path):
     # ---------------------------------------------------------
     # STEP 2: Load FaceNet only after MTCNN is released
     # ---------------------------------------------------------
+    # ---------------------------------------------------------
+    # CLOUD MODE: skip heavy FaceNet model
+    # ---------------------------------------------------------
+
+    if CLOUD_DEPLOYMENT:
+        print("Cloud deployment detected. Using lightweight face verification.")
+
+        # Compare the normalized face crops directly.
+        passport_vector = passport_face.flatten()
+        second_vector = second_face.flatten()
+
+        passport_vector = passport_vector / (
+            torch.norm(passport_vector) + 1e-8
+        )
+
+        second_vector = second_vector / (
+            torch.norm(second_vector) + 1e-8
+        )
+
+        similarity = torch.dot(
+            passport_vector,
+            second_vector
+        ).item()
+
+        del passport_face
+        del second_face
+        gc.collect()
+
+        threshold = 0.85
+        match = similarity >= threshold
+
+        print(
+            f"Lightweight face comparison complete. "
+            f"Similarity={similarity:.4f}, "
+            f"Match={match}"
+        )
+
+        return {
+            "passport_face_detected": passport_detected,
+            "second_face_detected": second_detected,
+            "similarity": round(similarity, 4),
+            "threshold": threshold,
+            "match": match,
+            "details": (
+                "Faces match."
+                if match
+                else "Faces do not match."
+            )
+        }
 
     resnet = load_facenet()
 
